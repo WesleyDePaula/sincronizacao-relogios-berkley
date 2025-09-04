@@ -19,10 +19,10 @@ public class ClientHandler implements Runnable {
 	private final BufferedReader in;
 	private final PrintWriter out;
 
-	private final BlockingQueue<Events> requestQueue = new LinkedBlockingQueue<>();
+	private final BlockingQueue<Evento> requestQueue = new LinkedBlockingQueue<>();
 	private volatile boolean running = true;
 
-	public ClientHandler(Socket socket) throws IOException {
+	public ClientHandler(Socket socket, ServerApp serverApp) throws IOException {
 		this.socket = socket;
 		this.in = new BufferedReader(new InputStreamReader(socket.getInputStream())); // Para "receber/ler" requisições
 																						// do client
@@ -37,12 +37,12 @@ public class ClientHandler implements Runnable {
 			while (running && !socket.isClosed()) {
 				// Busca a próxima requisição enfileirada, caso não tenha, bloqueia a thread até
 				// haver uma
-				Events requisicao = requestQueue.take();
+				Evento requisicao = requestQueue.take();
 
-				if (Events.GET_TIME == requisicao) {
+				if (Events.GET_TIME == requisicao.event()) {
 
 					// "Envia" a requisição ao client
-					out.println(Events.GET_TIME.request);
+					out.println(requisicao.getRequest());
 					out.flush();
 					log.info("# Enviado requisição {}", Events.GET_TIME.value);
 
@@ -53,6 +53,7 @@ public class ClientHandler implements Runnable {
 						if (resposta.startsWith(Events.SEND_TIME.request)) {
 							String payload = resposta.substring("RESPONSE:".length());
 							log.info("## Recebido de {} -> {}", getClientInfo(), payload);
+
 
 							// TODO: EXECUTAR ALGORITMO DE BECKLER E TRATAR HORÁRIO
 
@@ -80,8 +81,9 @@ public class ClientHandler implements Runnable {
 		}
 	}
 
-	public void getTime() {
-		requestQueue.add(Events.GET_TIME);
+	public void getTime(long tempoAtualServidor) {
+        Evento evento = new Evento(Events.GET_TIME, String.valueOf(tempoAtualServidor));
+		requestQueue.add(evento);
 	}
 
 	private void cleanup() {
@@ -99,3 +101,9 @@ public class ClientHandler implements Runnable {
 	}
 
 }
+
+record Evento(Events event, String parameter) {
+    String getRequest() {
+        return event.request + parameter;
+    }
+};

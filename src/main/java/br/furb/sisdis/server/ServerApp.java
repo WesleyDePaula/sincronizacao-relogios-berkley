@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import br.furb.sisdis.Relogio;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -20,16 +21,18 @@ public class ServerApp {
     static final CopyOnWriteArrayList<ClientHandler> handlers = new CopyOnWriteArrayList<>();
     private static final ScheduledExecutorService SCHED = Executors.newSingleThreadScheduledExecutor();
 	
-    
+    private static final Relogio relogio = new Relogio();
+
     public static void main(String[] args) {
     	criaRotinaGetTime();
+        relogio.start();
     	
     	try (ServerSocket serverSocket = new ServerSocket(PORT)) {
     		log.info("# Servidor iniciado na porta {}", PORT);
     		
     		while (true) {
     			Socket clientSocket = serverSocket.accept();
-    			ClientHandler handler = new ClientHandler(clientSocket);
+    			ClientHandler handler = new ClientHandler(clientSocket, this);
     			handlers.add(handler);
     			POOL.execute(handler);
     			
@@ -57,7 +60,9 @@ public class ServerApp {
             }
             
             log.info("# Enviando REQUEST:GET_TIME para " + handlers.size() + " clients...");
-            handlers.forEach(ClientHandler::getTime);
+            var tempoAtualServidor = relogio.getElapsedTime();
+            handlers.forEach(client -> client.getTime(tempoAtualServidor));
+
         }, 10, 60, TimeUnit.SECONDS);
 	}
     
