@@ -9,29 +9,34 @@ import java.net.SocketException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import br.furb.sisdis.Evento;
 import br.furb.sisdis.Events;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class ClientHandler implements Runnable {
+public class SlaveHandler implements Runnable {
 
-	private Socket socket;
+	private final Socket socket;
 	private final BufferedReader in;
 	private final PrintWriter out;
 
 	private final BlockingQueue<Evento> requestQueue = new LinkedBlockingQueue<>();
 	private volatile boolean running = true;
 
-	public ClientHandler(Socket socket, ServerApp serverApp) throws IOException {
+    @Getter
+    private Long ultimaDiferencaCalculada = null;
+
+	public SlaveHandler(Socket socket) throws IOException {
 		this.socket = socket;
 		this.in = new BufferedReader(new InputStreamReader(socket.getInputStream())); // Para "receber/ler" requisições
-																						// do client
-		this.out = new PrintWriter(socket.getOutputStream(), true); // Para "enviar" requisições ao client
+																						// do slave
+		this.out = new PrintWriter(socket.getOutputStream(), true); // Para "enviar" requisições ao slave
 	}
 
 	@Override
 	public void run() {
-		log.info("# Handler iniciado com sucesso para {}", getClientInfo());
+		log.info("# Handler iniciado com sucesso para {}", getSlaveInfo());
 
 		try {
 			while (running && !socket.isClosed()) {
@@ -41,7 +46,7 @@ public class ClientHandler implements Runnable {
 
 				if (Events.GET_TIME == requisicao.event()) {
 
-					// "Envia" a requisição ao client
+					// "Envia" a requisição ao slave
 					out.println(requisicao.getRequest());
 					out.flush();
 					log.info("# Enviado requisição {}", Events.GET_TIME.value);
@@ -51,22 +56,17 @@ public class ClientHandler implements Runnable {
 						String resposta = in.readLine();
 
 						if (resposta.startsWith(Events.SEND_TIME.request)) {
-							String payload = resposta.substring("RESPONSE:".length());
-							log.info("## Recebido de {} -> {}", getClientInfo(), payload);
+							String payload = resposta.substring(Events.SEND_TIME.request.length());
+							log.info("## Recebido de {} -> {}", getSlaveInfo(), payload);
 
+                            this.ultimaDiferencaCalculada = Long.parseLong(payload);
 
-							// TODO: EXECUTAR ALGORITMO DE BECKLER E TRATAR HORÁRIO
-
-							// Envia resultado para o client
-							out.println("OK"); // TODO: A principio, será um OK, deverá enviar o ajuste de horário ao
-												// client
 							out.flush();
-							log.info("OK enviado para {}", getClientInfo());
 						}
 
 					} catch (SocketException e) {
-						log.error("## Timeout ao aguardar resposta de {}", getClientInfo());
-						ServerApp.removeHandler(this);
+						log.error("## Timeout ao aguardar resposta de {}", getSlaveInfo());
+						MasterApp.removeHandler(this);
 					}
 
 				}
@@ -92,18 +92,20 @@ public class ClientHandler implements Runnable {
 			socket.close();
 		} catch (IOException ignored) {
 		}
-		ServerApp.removeHandler(this);
-		log.warn("Handler finalizado para {}", getClientInfo());
+		MasterApp.removeHandler(this);
+		log.warn("Handler finalizado para {}", getSlaveInfo());
 	}
 
-	public String getClientInfo() {
+	public String getSlaveInfo() {
 		return socket.getRemoteSocketAddress().toString();
 	}
 
+    public void ajustaTempo(long diff) {
+        var requisicao = new Evento(Events.AJUSTA_TEMPO, String.valueOf(diff));
+
+        out.println(requisicao.getRequest());
+        out.flush();
+    }
 }
 
-record Evento(Events event, String parameter) {
-    String getRequest() {
-        return event.request + parameter;
-    }
-};
+;
