@@ -6,10 +6,9 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.time.LocalDateTime;
+import java.util.Random;
 
 import br.furb.sisdis.Events;
-import br.furb.sisdis.Relogio;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -17,17 +16,18 @@ public class SlaveApp {
 
 	private static final String SERVER_HOST = "localhost";
 	private static final int SERVER_PORT = 5000;
-    private static final Relogio relogio = new Relogio();
+    private static final Random RANDOM = new Random();
+    private static long time = RANDOM.nextLong(0, 120);
 
 	public static void main(String[] args) {
 		int tentativasConexao = 0;
 
 		while (tentativasConexao < 5) {
-            relogio.start();
 			try (Socket socket = new Socket()) {
 
 				socket.connect(new InetSocketAddress(SERVER_HOST, SERVER_PORT), 5000);
-				log.info("# Client conectando em {}:{}", SERVER_HOST, SERVER_PORT);
+				log.info("# Slave conectando em {}:{}", SERVER_HOST, SERVER_PORT);
+                log.info("# Horário slave: {}", time);
 
 				
 				BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -41,7 +41,10 @@ public class SlaveApp {
 
                         var horarioMaster = line.substring(Events.GET_TIME.request.length());
 
-						long differenceTime = relogio.getElapsedTime() - Long.parseLong(horarioMaster);
+
+						long differenceTime = time - Long.parseLong(horarioMaster);
+
+                        log.info("## Diferença de tempo: {}",  differenceTime);
 
 						// Envia a resposta seguindo o protocolo
 						String response = Events.SEND_TIME.request + differenceTime;
@@ -53,11 +56,11 @@ public class SlaveApp {
 
 					if (line.startsWith(Events.AJUSTA_TEMPO.request)) {
                         var ajusteTempo = line.substring(Events.AJUSTA_TEMPO.request.length());
-                        log.info("# Recebido requisição {} -> Ajuste do tempo {}", Events.GET_TIME.value, ajusteTempo);
+                        log.info("# Recebido requisição {} -> Ajuste do tempo {}", Events.AJUSTA_TEMPO.value, ajusteTempo);
 
-                        relogio.setCorrection(Long.parseLong(ajusteTempo));
+                        time += Long.parseLong(ajusteTempo);
 
-                        log.info("# Novo tempo definido -> {}", relogio.getElapsedTime());
+                        log.info("# Novo tempo definido -> {}", time);
                         continue;
 					}
 
